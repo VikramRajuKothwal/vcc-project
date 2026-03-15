@@ -9,4 +9,4 @@ df = client.query("""
 """).to_dataframe()
 df["label"] = "normal"
 df.to_csv("metrics_normal.csv", index=False)
-print(f"Exported {len(df)} rows to metrics_normal.csv")
+print(f"Exported {len(df)} rows to metrics_actual.csv")
