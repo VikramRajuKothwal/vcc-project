@@ -3,7 +3,7 @@
 import pandas as pd
 
 # ── 1. Load ──────────────────────────────────────────────────────────────────
-df = pd.read_csv("metrics_normal.csv")
+df = pd.read_csv("metrics_actual.csv")
 print(f"Raw rows        : {len(df)}")
 
 # ── 2. Fill missing latency with 0 (before locust started) ───────────────────
@@ -31,4 +31,4 @@ print(f"\nStats:\n{df[['cpu','memory','latency','instances']].describe().round(4
 
 # ── 7. Save ───────────────────────────────────────────────────────────────────
 df.to_csv("metrics_clean.csv", index=False)
-print("\n✅ Saved as metrics_clean.csv")
+print("\n✅ Saved as metrics_cleaned.csv")
