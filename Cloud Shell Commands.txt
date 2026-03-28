@@ -1,0 +1,104 @@
+gcloud services enable run.googleapis.com \
+monitoring.googleapis.com \
+bigquery.googleapis.com \
+cloudfunctions.googleapis.com \
+pubsub.googleapis.com \
+cloudscheduler.googleapis.com \
+storage.googleapis.com \
+cloudbuild.googleapis.com \
+eventarc.googleapis.com
+
+# Replace PROJECT_NUMBER with the number from Step 1 which is: vcc-project-52
+
+gcloud projects add-iam-policy-binding vcc-project-52 \
+  --member="serviceAccount:528502240329@cloudbuild.gserviceaccount.com" \
+  --role="roles/cloudbuild.builds.builder"
+
+gcloud projects add-iam-policy-binding vcc-project-52 \
+  --member="serviceAccount:528502240329@cloudbuild.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+
+gcloud projects add-iam-policy-binding vcc-project-52 \
+  --member="serviceAccount:528502240329@cloudbuild.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
+
+
+bq mk --dataset vcc-project-52:cloud_metrics
+
+bq mk --table vcc-project-52:cloud_metrics.run_metrics \
+timestamp:TIMESTAMP,cpu:FLOAT,memory:FLOAT,\
+latency:FLOAT,instances:INTEGER,label:STRING
+
+gcloud run deploy vcc-workload \
+--image gcr.io/cloudrun/hello \
+--platform managed \
+--region asia-southeast1 \
+--allow-unauthenticated
+
+https://vcc-workload-528502240329.asia-southeast1.run.app/
+
+gcloud run services describe vcc-workload \
+--platform managed \
+--region asia-southeast1 \
+--format "value(status.url)"
+
+https://vcc-workload-6l2en5hnjq-as.a.run.app/
+
+pip install google-cloud-monitoring google-cloud-bigquery
+
+mkdir metric-collector && cd metric-collector
+
+echo "google-cloud-monitoring
+google-cloud-bigquery" > requirements.txt
+
+gcloud functions runtimes list --region asia-southeast1
+
+gcloud functions deploy metric-collector \
+  --runtime python312 \
+  --trigger-http \
+  --entry-point collect_and_store \
+  --allow-unauthenticated \
+  --region asia-southeast1
+
+https://asia-southeast1-vcc-project-52.cloudfunctions.net/metric-collector
+
+hey -n 200 -c 20 https://vcc-workload-6l2en5hnjq-as.a.run.app/
+
+bq query --use_legacy_sql=false \
+  'SELECT timestamp, cpu, memory, latency, instances
+   FROM `vcc-project-52.cloud_metrics.run_metrics`
+   ORDER BY timestamp DESC LIMIT 5'
+
+# Create a scheduler job to trigger every 5 minutes
+gcloud scheduler jobs create http metric-collector-job \
+  --schedule="*/5 * * * *" \
+  --uri="https://asia-southeast1-vcc-project-52.cloudfunctions.net/metric-collector" \
+  --http-method=GET \
+  --location=asia-southeast1
+
+pip install locust
+
+locust -f locustfile_normal.py --headless -u 20 -r 2 --run-time 8h --host=https://vcc-workload-6l2en5hnjq-as.a.run.app
+
+locust -f locustfile_normal.py --headless -u 20 -r 2 --run-time 30h --host=https://vcc-workload-6l2en5hnjq-as.a.run.app
+
+bq query --use_legacy_sql=false \
+'SELECT COUNT(*) as total, MAX(timestamp) as latest FROM `vcc-project-52.cloud_metrics.run_metrics`'
+
+bq query --use_legacy_sql=false \
+'SELECT COUNT(*) as total_rows, MIN(timestamp) as first_collected, MAX(timestamp) as last_collected FROM `vcc-project-52.cloud_metrics.run_metrics`'
+
+gcloud scheduler jobs describe collect-metrics-job \
+  --location=asia-southeast1 \
+  --format="value(state,lastAttemptTime,status.code)"
+
+pip install pandas db-dtypes
+# db-dtypes is also needed alongside pandas for BigQuery to convert data types correctly when using .to_dataframe(). 
+
+python3 export_csv.py
+
+cloudshell download ~/metric-collector/metrics_normal.csv
+
+
+
+
