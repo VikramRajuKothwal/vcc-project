@@ -1,0 +1,156 @@
+#enable Google API services
+gcloud services enable run.googleapis.com \
+monitoring.googleapis.com \
+bigquery.googleapis.com \
+cloudfunctions.googleapis.com \
+pubsub.googleapis.com \
+cloudscheduler.googleapis.com \
+storage.googleapis.com \
+cloudbuild.googleapis.com \
+eventarc.googleapis.com
+
+#Display the enabled google api services
+gcloud services list --enabled --format="value(config.name)"
+
+# Grand roles to the default service account
+
+gcloud projects add-iam-policy-binding vcc-project-52 \
+  --member="serviceAccount:528502240329@cloudbuild.gserviceaccount.com" \
+  --role="roles/cloudbuild.builds.builder"
+
+gcloud projects add-iam-policy-binding vcc-project-52 \
+  --member="serviceAccount:528502240329@cloudbuild.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+
+gcloud projects add-iam-policy-binding vcc-project-52 \
+  --member="serviceAccount:528502240329@cloudbuild.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
+
+#Display the granted iam policies
+gcloud projects get-iam-policy vcc-project-52 \
+    --flatten="bindings[].members" \
+    --format="table(bindings.role)" \
+    --filter="bindings.members:serviceAccount:528502240329@cloudbuild.gserviceaccount.com"
+
+#BigQuery commands
+bq mk --dataset vcc-project-52:cloud_metrics
+
+bq mk --table vcc-project-52:cloud_metrics.run_metrics \
+timestamp:TIMESTAMP,cpu:FLOAT,memory:FLOAT,\
+latency:FLOAT,instances:INTEGER,label:STRING
+
+bq show vcc-project-52:cloud_metrics.run_metrics
+
+#deploy a sample workload
+gcloud run deploy vcc-workload \
+--image gcr.io/cloudrun/hello \
+--platform managed \
+--region asia-southeast1 \
+--allow-unauthenticated
+
+https://vcc-workload-528502240329.asia-southeast1.run.app/
+
+gcloud run services describe vcc-workload \
+--platform managed \
+--region asia-southeast1 \
+--format "value(status.url)"
+
+https://vcc-workload-6l2en5hnjq-as.a.run.app/
+
+pip install google-cloud-monitoring google-cloud-bigquery
+
+mkdir metric-collector && cd metric-collector
+
+gcloud functions runtimes list --region asia-southeast1
+
+gcloud functions deploy metric-collector \
+  --runtime python312 \
+  --trigger-http \
+  --entry-point collect_and_store \
+  --allow-unauthenticated \
+  --region asia-southeast1
+
+https://asia-southeast1-vcc-project-52.cloudfunctions.net/metric-collector
+
+gcloud functions list
+gcloud functions list --regions=asia-southeast1
+
+hey -n 200 -c 20 https://vcc-workload-6l2en5hnjq-as.a.run.app/
+
+bq query --use_legacy_sql=false \
+  'SELECT timestamp, cpu, memory, latency, instances
+   FROM `vcc-project-52.cloud_metrics.run_metrics`
+   ORDER BY timestamp DESC LIMIT 5'
+
+# Create a scheduler job to trigger every 5 minutes
+gcloud scheduler jobs create http metric-collector-job \
+  --schedule="*/5 * * * *" \
+  --uri="https://asia-southeast1-vcc-project-52.cloudfunctions.net/metric-collector" \
+  --http-method=GET \
+  --location=asia-southeast1
+ 
+gcloud scheduler jobs list --location=asia-southeast1
+
+gcloud scheduler jobs describe collect-metrics-job \
+  --location=asia-southeast1 \
+  --format="value(state,lastAttemptTime,status.code)"
+
+#on windows laptop run the below commands:
+pip install locust
+
+locust -f locustfile_normal.py --headless -u 20 -r 2 --run-time 8h --host=https://vcc-workload-6l2en5hnjq-as.a.run.app
+
+locust -f locustfile_normal.py --headless -u 20 -r 2 --run-time 30h --host=https://vcc-workload-6l2en5hnjq-as.a.run.app
+
+#query the bigquery dataset
+bq query --use_legacy_sql=false \
+'SELECT COUNT(*) as total, MAX(timestamp) as latest FROM `vcc-project-52.cloud_metrics.run_metrics`'
+
+bq query --use_legacy_sql=false \
+'SELECT COUNT(*) as total_rows, MIN(timestamp) as first_collected, MAX(timestamp) as last_collected FROM `vcc-project-52.cloud_metrics.run_metrics`'
+
+# db-dtypes is also needed alongside pandas for BigQuery to convert data types correctly when using .to_dataframe(). 
+pip install pandas db-dtypes
+
+#to export the bigquery rows to csv from cloud shell
+python3 export_csv.py
+
+#to download the csv file from cloud shell
+cloudshell download ~/metric-collector/metrics_normal.csv
+
+#pub sub
+gcloud pubsub topics create anomaly-alerts
+gcloud pubsub subscriptions create anomaly-sub \
+  --topic=anomaly-alerts
+
+gcloud pubsub topics list
+
+gcloud pubsub subscriptions list
+
+# Deploy alert handler triggered by Pub/Sub
+gcloud functions deploy alert-handler \
+  --runtime python311 \
+  --trigger-topic anomaly-alerts \
+  --entry-point alert_handler \
+  --region asia-southeast1 \
+  -- memory 256MB \
+  --timeout 60s \
+  --no-gen2
+
+# Test: publish a manual message
+gcloud pubsub topics publish anomaly-alerts \
+  --message='{"metric":"cpu","score":-0.8,"timestamp":"test",
+"model":"IsolationForest","severity":"HIGH"}'
+
+# Check Cloud Function logs to confirm receipt
+gcloud functions logs read alert-handler \
+  --region asia-southeast1 \
+  --limit 20
+
+
+
+
+
+
+
+
