@@ -1,6 +1,6 @@
-Vikram Raju Kothwal	m25ai2033@iitj.ac.in
-Piyush Sharma		m25ai2095@iitj.ac.in
-Rohan Tiwari		m25ai2133@iitj.ac.in
-Dheeraj Saini		m25ai2149@iitj.ac.in
-Dheeraj Kumar Sabastian	m25ai2142@iitj.ac.in
-Abhishek Singh		m25ai2039@iitj.ac.in
+Vikram Raju Kothwal	  m25ai2033@iitj.ac.in
+Piyush Sharma		      m25ai2095@iitj.ac.in
+Rohan Tiwari		      m25ai2133@iitj.ac.in
+Dheeraj Saini		      m25ai2149@iitj.ac.in
+Dheeraj Kumar S       m25ai2142@iitj.ac.in
+Abhishek Singh		    m25ai2039@iitj.ac.in
