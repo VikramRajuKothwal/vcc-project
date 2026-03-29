@@ -1,3 +1,0 @@
-google-cloud-monitoring
-google-cloud-bigquery
-google-cloud-pubsub
